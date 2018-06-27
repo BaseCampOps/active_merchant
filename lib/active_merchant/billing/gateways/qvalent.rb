@@ -61,6 +61,18 @@ module ActiveMerchant #:nodoc:
         commit("refund", post)
       end
 
+      # Credit requires the merchant account to be enabled for "Adhoc Refunds"
+      def credit(amount, payment_method, options={})
+        post = {}
+        add_invoice(post, amount, options)
+        add_order_number(post, options)
+        add_payment_method(post, payment_method)
+        add_customer_data(post, options)
+        add_soft_descriptors(post, options)
+
+        commit("refund", post)
+      end
+
       def void(authorization, options={})
         post = {}
         add_reference(post, authorization, options)
@@ -108,7 +120,7 @@ module ActiveMerchant #:nodoc:
       def add_invoice(post, money, options)
         post["order.amount"] = amount(money)
         post["card.currency"] = CURRENCY_CODES[options[:currency] || currency(money)]
-        post["order.ECI"] = "SSL"
+        post["order.ECI"] = options[:eci] || "SSL"
       end
 
       def add_payment_method(post, payment_method)
@@ -136,7 +148,9 @@ module ActiveMerchant #:nodoc:
       end
 
       def add_customer_data(post, options)
-        post["order.ipAddress"] = options[:ip]
+        post["order.ipAddress"] = options[:ip] || "127.0.0.1"
+        post["order.xid"] = options[:xid] if options[:xid]
+        post["order.cavv"] = options[:cavv] if options[:cavv]
       end
 
       def commit(action, post)

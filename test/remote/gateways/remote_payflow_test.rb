@@ -17,14 +17,31 @@ class RemotePayflowTest < Test::Unit::TestCase
       :customer => 'codyexample'
     }
 
+    @extra_options = {
+      :order_id => "123",
+      :description => "Description string",
+      :order_desc => "OrderDesc string",
+      :comment => "Comment string",
+      :comment2 => "Comment2 string"
+    }
+
     @check = check(
       :routing_number => '111111118',
-      :account_number => '1234567801'
+      :account_number => '1111111111'
     )
   end
 
   def test_successful_purchase
     assert response = @gateway.purchase(100000, @credit_card, @options)
+    assert_equal "Approved", response.message
+    assert_success response
+    assert response.test?
+    assert_not_nil response.authorization
+    assert !response.fraud_review?
+  end
+
+  def test_successful_purchase_with_extra_options
+    assert response = @gateway.purchase(100000, @credit_card, @options.merge(@extra_options))
     assert_equal "Approved", response.message
     assert_success response
     assert response.test?
@@ -70,6 +87,16 @@ class RemotePayflowTest < Test::Unit::TestCase
     assert_equal "Approved", response.message
     assert response.test?
     assert_not_nil response.authorization
+  end
+
+  def test_ach_purchase_and_refund
+    assert response = @gateway.purchase(50, @check)
+    assert_success response
+    assert_equal 'Approved', response.message
+    assert !response.authorization.blank?
+
+    assert credit = @gateway.refund(50, response.authorization)
+    assert_success credit
   end
 
   def test_successful_authorization
@@ -127,6 +154,16 @@ class RemotePayflowTest < Test::Unit::TestCase
     assert response = @gateway.verify(@credit_card, @options)
     assert_success response
     assert_equal "Verified", response.message
+  end
+
+  def test_successful_verify_amex
+    @amex_credit_card = credit_card(
+      '378282246310005',
+      :brand => 'american_express'
+    )
+    assert response = @gateway.verify(@amex_credit_card, @options)
+    assert_success response
+    assert_equal "Approved", response.message
   end
 
   def test_failed_verify
@@ -349,5 +386,24 @@ class RemotePayflowTest < Test::Unit::TestCase
             :xid => 'UXZEYlNBeFNpYVFzMjQxODk5RTA='
         }
     }
+  end
+
+  def test_transcript_scrubbing
+    transcript = capture_transcript(@gateway) do
+      @gateway.purchase(@amount, @credit_card, @options)
+    end
+    transcript = @gateway.scrub(transcript)
+
+    assert_scrubbed(@credit_card.number, transcript)
+    assert_scrubbed(@credit_card.verification_value, transcript)
+    assert_scrubbed(@gateway.options[:password], transcript)
+
+    transcript = capture_transcript(@gateway) do
+      @gateway.purchase(50, @check)
+    end
+    transcript = @gateway.scrub(transcript)
+
+    assert_scrubbed(@check.account_number, transcript)
+    assert_scrubbed(@gateway.options[:password], transcript)
   end
 end

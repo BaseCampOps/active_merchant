@@ -103,7 +103,7 @@ module ActiveMerchant
     end
 
     def assert_deprecation_warning(message=nil)
-      ActiveMerchant.expects(:deprecated).with(message ? message : anything)
+      ActiveMerchant.expects(:deprecated).with(message || anything)
       yield
     end
 
@@ -231,6 +231,16 @@ module ActiveMerchant
         country:  'CA',
         phone:    '(555)555-5555',
         fax:      '(555)555-6666'
+      }.update(options)
+    end
+
+    def statement_address(options = {})
+      {
+        address1: '456 My Street',
+        address2: 'Apt 1',
+        city:     'Ottawa',
+        state:    'ON',
+        zip:      'K1C2N6'
       }.update(options)
     end
 

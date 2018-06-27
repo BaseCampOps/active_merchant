@@ -77,21 +77,21 @@ module ActiveMerchant #:nodoc:
         post[:description] = options[:description] || "Active Merchant Purchase"
         post[:reference_id] = options[:order_id] if options[:order_id]
         post[:currency] = (options[:currency] || currency(money)).downcase
+        post[:monthly_installments] = options[:monthly_installments] if options[:monthly_installments]
         post[:amount] = amount(money)
       end
 
       def add_details_data(post, options)
         details = {}
-        details[:name] = options[:customer] if options[:customer]
+        details[:name] = options[:customer] || (options[:billing_address][:name] if options[:billing_address])
+        details[:phone] = options[:phone] || (options[:billing_address][:phone] if options[:billing_address])
         details[:email] = options[:email] if options[:email]
-        details[:phone] = options[:phone] if options[:phone]
-        post[:device_fingerprint] = options[:device_fingerprint] if options[:device_fingerprint]
         details[:ip] = options[:ip] if options[:ip]
         add_billing_address(details, options)
         add_line_items(details, options)
         add_shipment(details, options)
-
         post[:details] = details
+        post[:device_fingerprint] = options[:device_fingerprint] if options[:device_fingerprint]
       end
 
       def add_shipment(post, options)

@@ -162,6 +162,7 @@ class BraintreeBlueTest < Test::Unit::TestCase
     customer = stub(
       :credit_cards => [stub_everything],
       :email => 'email',
+      :phone => '321-654-0987',
       :first_name => 'John',
       :last_name => 'Smith'
     )
@@ -169,7 +170,7 @@ class BraintreeBlueTest < Test::Unit::TestCase
     result = Braintree::SuccessfulResult.new(:customer => customer)
 
     Braintree::CustomerGateway.any_instance.expects(:create).with do |params|
-      'merchant_account_id' == params[:credit_card][:options][:verification_merchant_account_id]
+      params[:credit_card][:options][:verification_merchant_account_id] == 'merchant_account_id'
     end.returns(result)
 
     gateway.store(credit_card('41111111111111111111'), :verify_card => true)
@@ -185,13 +186,14 @@ class BraintreeBlueTest < Test::Unit::TestCase
     customer = stub(
       :credit_cards => [stub_everything],
       :email => 'email',
+      :phone => '321-654-0987',
       :first_name => 'John',
       :last_name => 'Smith'
     )
     customer.stubs(:id).returns('123')
     result = Braintree::SuccessfulResult.new(:customer => customer)
     Braintree::CustomerGateway.any_instance.expects(:create).with do |params|
-      'value_from_options' == params[:credit_card][:options][:verification_merchant_account_id]
+      params[:credit_card][:options][:verification_merchant_account_id] == 'value_from_options'
     end.returns(result)
 
     gateway.store(credit_card('41111111111111111111'), :verify_card => true, :verification_merchant_account_id => 'value_from_options')
@@ -201,6 +203,7 @@ class BraintreeBlueTest < Test::Unit::TestCase
     customer = stub(
       :credit_cards => [stub_everything],
       :email => 'email',
+      :phone => '321-654-0987',
       :first_name => 'John',
       :last_name => 'Smith'
     )
@@ -222,6 +225,7 @@ class BraintreeBlueTest < Test::Unit::TestCase
     customer = stub(
       :credit_cards => [stub_everything],
       :email => "bob@example.com",
+      :phone => '321-654-0987',
       :first_name => 'John',
       :last_name => 'Smith',
       id: "123"
@@ -240,6 +244,7 @@ class BraintreeBlueTest < Test::Unit::TestCase
     customer = stub(
       :credit_cards => [stub_everything],
       :email => nil,
+      :phone => '321-654-0987',
       :first_name => 'John',
       :last_name => 'Smith',
       :id => "123"
@@ -258,6 +263,7 @@ class BraintreeBlueTest < Test::Unit::TestCase
     customer = stub(
       :credit_cards => [stub_everything],
       :email => 'email',
+      :phone => '321-654-0987',
       :first_name => 'John',
       :last_name => 'Smith'
     )
@@ -278,6 +284,7 @@ class BraintreeBlueTest < Test::Unit::TestCase
     customer_attributes = {
       :credit_cards => [stub_everything],
       :email => 'email',
+      :phone => '321-654-0987',
       :first_name => 'John',
       :last_name => 'Smith'
     }
@@ -306,6 +313,7 @@ class BraintreeBlueTest < Test::Unit::TestCase
   def test_store_with_credit_card_token
     customer = stub(
       :email => 'email',
+      :phone => '321-654-0987',
       :first_name => 'John',
       :last_name => 'Smith'
     )
@@ -329,6 +337,7 @@ class BraintreeBlueTest < Test::Unit::TestCase
   def test_store_with_customer_id
     customer = stub(
       :email => 'email',
+      :phone => '321-654-0987',
       :first_name => 'John',
       :last_name => 'Smith',
       :credit_cards => [stub_everything]
@@ -504,6 +513,20 @@ class BraintreeBlueTest < Test::Unit::TestCase
     @gateway.purchase(100, credit_card("41111111111111111111"), :customer => {:first_name => "Longbob", :last_name => "Longsen"})
   end
 
+  def test_three_d_secure_pass_thru_handling
+    Braintree::TransactionGateway.
+      any_instance.
+      expects(:sale).
+      with(has_entries(three_d_secure_pass_thru: {
+        cavv: "cavv",
+        eci_flag: "eci",
+        xid: "xid",
+    })).
+   returns(braintree_result)
+
+    @gateway.purchase(100, credit_card("41111111111111111111"), three_d_secure: {cavv: "cavv", eci: "eci", xid: "xid"})
+  end
+
   def test_passes_recurring_flag
     @gateway = BraintreeBlueGateway.new(
       :merchant_id => 'test',
@@ -598,7 +621,8 @@ class BraintreeBlueTest < Test::Unit::TestCase
       with(
         :amount => '1.00',
         :order_id => '1',
-        :customer => {:id => nil, :email => nil, :first_name => 'Longbob', :last_name => 'Longsen'},
+        :customer => {:id => nil, :email => nil, :phone => nil,
+                      :first_name => 'Longbob', :last_name => 'Longsen'},
         :options => {:store_in_vault => false, :submit_for_settlement => nil, :hold_in_escrow => nil},
         :custom_fields => nil,
         :apple_pay_card => {
@@ -606,7 +630,8 @@ class BraintreeBlueTest < Test::Unit::TestCase
           :expiration_month => '09',
           :expiration_year => (Time.now.year + 1).to_s,
           :cardholder_name => 'Longbob Longsen',
-          :cryptogram => '111111111100cryptogram'
+          :cryptogram => '111111111100cryptogram',
+          :eci_indicator => '05'
         }
       ).
       returns(braintree_result(:id => "transaction_id"))
@@ -627,7 +652,8 @@ class BraintreeBlueTest < Test::Unit::TestCase
       with(
         :amount => '1.00',
         :order_id => '1',
-        :customer => {:id => nil, :email => nil, :first_name => 'Longbob', :last_name => 'Longsen'},
+        :customer => {:id => nil, :email => nil, :phone => nil,
+                      :first_name => 'Longbob', :last_name => 'Longsen'},
         :options => {:store_in_vault => false, :submit_for_settlement => nil, :hold_in_escrow => nil},
         :custom_fields => nil,
         :android_pay_card => {
@@ -637,14 +663,14 @@ class BraintreeBlueTest < Test::Unit::TestCase
           :cryptogram => '111111111100cryptogram',
           :google_transaction_id => '1234567890',
           :source_card_type => "visa",
-          :source_card_last_four => "1111"
+          :source_card_last_four => "1111",
+          :eci_indicator => '05'
         }
       ).
       returns(braintree_result(:id => "transaction_id"))
 
     credit_card = network_tokenization_credit_card('4111111111111111',
       :brand              => 'visa',
-      :transaction_id     => "123",
       :eci                => "05",
       :payment_cryptogram => "111111111100cryptogram",
       :source             => :android_pay,

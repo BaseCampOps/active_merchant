@@ -9,7 +9,8 @@ class RemotePayeezyTest < Test::Unit::TestCase
     @amount = 100
     @options = {
       :billing_address => address,
-      :merchant_ref => 'Store Purchase'
+      :merchant_ref => 'Store Purchase',
+      :ta_token => 'NOIW'
     }
     @options_mdd = {
       soft_descriptors: {
@@ -26,6 +27,27 @@ class RemotePayeezyTest < Test::Unit::TestCase
     }
   end
 
+  def test_successful_store
+    assert response = @gateway.store(@credit_card, @options)
+    assert_success response
+    assert_equal 'Token successfully created.', response.message
+    assert response.authorization
+  end
+
+  def test_successful_store_and_purchase
+    assert response = @gateway.store(@credit_card, @options)
+    assert_success response
+    assert !response.authorization.blank?
+    assert purchase = @gateway.purchase(@amount, response.authorization, @options)
+    assert_success purchase
+  end
+
+  def test_unsuccessful_store
+    assert response = @gateway.store(@bad_credit_card, @options)
+    assert_failure response
+    assert_equal 'The credit card number check failed', response.message
+  end
+
   def test_successful_purchase
     assert response = @gateway.purchase(@amount, @credit_card, @options)
     assert_match(/Transaction Normal/, response.message)
@@ -33,7 +55,8 @@ class RemotePayeezyTest < Test::Unit::TestCase
   end
 
   def test_successful_purchase_with_echeck
-    assert response = @gateway.purchase(@amount, @check, @options)
+    options = @options.merge({customer_id_type: "1", customer_id_number: "1", client_email: "test@example.com"})
+    assert response = @gateway.purchase(@amount, @check, options)
     assert_match(/Transaction Normal/, response.message)
     assert_success response
   end
@@ -55,6 +78,18 @@ class RemotePayeezyTest < Test::Unit::TestCase
     assert auth = @gateway.authorize(@amount, @credit_card, @options)
     assert_success auth
     assert auth.authorization
+    assert capture = @gateway.capture(@amount, auth.authorization)
+    assert_success capture
+  end
+
+  def test_successful_store_and_auth_and_capture
+    assert response = @gateway.store(@credit_card, @options)
+    assert_success response
+
+    assert auth = @gateway.authorize(@amount, response.authorization, @options)
+    assert_success auth
+    assert auth.authorization
+
     assert capture = @gateway.capture(@amount, auth.authorization)
     assert_success capture
   end
@@ -101,6 +136,20 @@ class RemotePayeezyTest < Test::Unit::TestCase
     assert response.authorization
   end
 
+  def test_successful_refund_with_stored_card
+    response = @gateway.store(@credit_card, @options)
+    assert_success response
+
+    assert purchase = @gateway.purchase(@amount, response.authorization, @options)
+    assert_match(/Transaction Normal/, purchase.message)
+    assert_success purchase
+
+    assert response = @gateway.refund(50, purchase.authorization)
+    assert_success response
+    assert_match(/Transaction Normal/, response.message)
+    assert response.authorization
+  end
+
   def test_partial_refund
     purchase = @gateway.purchase(@amount, @credit_card, @options)
     assert_success purchase
@@ -122,6 +171,18 @@ class RemotePayeezyTest < Test::Unit::TestCase
 
   def test_successful_void
     auth = @gateway.authorize(@amount, @credit_card, @options)
+    assert_success auth
+
+    assert void = @gateway.void(auth.authorization)
+    assert_success void
+    assert_equal 'Transaction Normal - Approved', void.message
+  end
+
+  def test_successful_void_with_stored_card
+    response = @gateway.store(@credit_card, @options)
+    assert_success response
+
+    auth = @gateway.authorize(@amount, response.authorization, @options)
     assert_success auth
 
     assert void = @gateway.void(auth.authorization)
@@ -174,6 +235,31 @@ class RemotePayeezyTest < Test::Unit::TestCase
     assert_match(/Server Error/, response.message) # 42 is 'unable to send trans'
     assert_failure response
     assert_equal "500", response.error_code
+  end
+
+  def test_transcript_scrubbing_store
+    transcript = capture_transcript(@gateway) do
+      @gateway.store(@credit_card, @options)
+    end
+
+    transcript = @gateway.scrub(transcript)
+    assert_scrubbed(@credit_card.number, transcript)
+    assert_scrubbed(@credit_card.verification_value, transcript)
+    assert_scrubbed(@gateway.options[:token], transcript)
+    assert_scrubbed(@gateway.options[:apikey], transcript)
+  end
+
+  def test_transcript_scrubbing_store_with_missing_ta_token
+    transcript = capture_transcript(@gateway) do
+      @options.delete(:ta_token)
+      @gateway.store(@credit_card, @options)
+    end
+
+    transcript = @gateway.scrub(transcript)
+    assert_scrubbed(@credit_card.number, transcript)
+    assert_scrubbed(@credit_card.verification_value, transcript)
+    assert_scrubbed(@gateway.options[:token], transcript)
+    assert_scrubbed(@gateway.options[:apikey], transcript)
   end
 
   def test_transcript_scrubbing

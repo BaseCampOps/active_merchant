@@ -24,6 +24,15 @@ module ActiveMerchant #:nodoc:
         end
       end
 
+      def refund(amount, authorization, options={})
+        action = "refund"
+
+        post = {}
+        post[:ticketNumber] = authorization
+
+        commit(action, post)
+      end
+
       def void(authorization, options={})
         action = "void"
 
@@ -85,14 +94,7 @@ module ActiveMerchant #:nodoc:
         sum[:iva] = 0
         sum[:subtotalIva0] = 0
 
-        if sum[:currency] == "COP"
-          extra_taxes = {}
-          extra_taxes[:propina] = 0
-          extra_taxes[:tasaAeroportuaria] = 0
-          extra_taxes[:agenciaDeViaje] = 0
-          extra_taxes[:iac] = 0
-          sum[:extraTaxes] = extra_taxes
-        else
+        if sum[:currency] != "COP"
           sum[:ice] = 0
         end
       end
@@ -103,7 +105,8 @@ module ActiveMerchant #:nodoc:
           sum[:iva] = amount[:iva].to_f if amount[:iva]
           sum[:subtotalIva0] = amount[:subtotal_iva_0].to_f if amount[:subtotal_iva_0]
           sum[:ice] = amount[:ice].to_f if amount[:ice]
-          if extra_taxes = amount[:extra_taxes] && sum[:currency] == "COP"
+          if (extra_taxes = amount[:extra_taxes]) && sum[:currency] == "COP"
+            sum[:extraTaxes] ||= Hash.new
             sum[:extraTaxes][:propina] = extra_taxes[:propina].to_f if extra_taxes[:propina]
             sum[:extraTaxes][:tasaAeroportuaria] = extra_taxes[:tasa_aeroportuaria].to_f if extra_taxes[:tasa_aeroportuaria]
             sum[:extraTaxes][:agenciaDeViaje] = extra_taxes[:agencia_de_viaje].to_f if extra_taxes[:agencia_de_viaje]
@@ -129,7 +132,8 @@ module ActiveMerchant #:nodoc:
       ENDPOINT = {
         "tokenize" => "tokens",
         "charge" => "charges",
-        "void" => "charges"
+        "void" => "charges",
+        "refund" => "refund"
       }
 
       def commit(action, params)
@@ -152,7 +156,7 @@ module ActiveMerchant #:nodoc:
       end
 
       def ssl_invoke(action, params)
-        if action == "void"
+        if ["void", "refund"].include?(action)
           ssl_request(:delete, url(action, params), nil, headers(action))
         else
           ssl_post(url(action, params), post_data(params), headers(action))
@@ -174,8 +178,8 @@ module ActiveMerchant #:nodoc:
       def url(action, params)
         base_url = test? ? test_url : live_url
 
-        if action == "void"
-          base_url + ENDPOINT[action] + "/" + params[:ticketNumber]
+        if ["void", "refund"].include?(action)
+          base_url + ENDPOINT[action] + "/" + params[:ticketNumber].to_s
         else
           base_url + ENDPOINT[action]
         end
@@ -194,7 +198,7 @@ module ActiveMerchant #:nodoc:
       end
 
       def success_from(response)
-        return true if response["token"] || response["ticketNumber"]
+        return true if response["token"] || response["ticketNumber"] || response["code"] == "K000"
       end
 
       def message_from(succeeded, response)

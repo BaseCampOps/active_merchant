@@ -103,7 +103,7 @@ module ActiveMerchant #:nodoc:
       end
 
       def build_authorize_request(money, credit_card, options)
-         build_xml_request(money, credit_card, options) do |xml|
+        build_xml_request(money, credit_card, options) do |xml|
           add_customer_data(xml, options)
           add_order_data(xml, options)  do
             add_addresses(xml, options)
@@ -117,7 +117,7 @@ module ActiveMerchant #:nodoc:
 
       def build_capture_request(money, ref_id, options)
         options = options.merge(:order_id => ref_id)
-         build_xml_request(money, ref_id, options) do |xml|
+        build_xml_request(money, ref_id, options) do |xml|
           add_customer_data(xml, options)
           add_order_data(xml, options)
           add_transaction_data(xml, money, options)
@@ -197,10 +197,8 @@ module ActiveMerchant #:nodoc:
 
         if ActiveSupport::Inflector.method(:transliterate).arity == -2
           ActiveSupport::Inflector.transliterate(text,'')
-        elsif RUBY_VERSION >= '1.9'
-          text.gsub(/[^\x00-\x7F]+/, '')
         else
-          ActiveSupport::Inflector.transliterate(text).to_s
+          text.gsub(/[^\x00-\x7F]+/, '')
         end
       end
 

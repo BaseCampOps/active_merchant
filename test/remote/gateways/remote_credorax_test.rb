@@ -5,8 +5,8 @@ class RemoteCredoraxTest < Test::Unit::TestCase
     @gateway = CredoraxGateway.new(fixtures(:credorax))
 
     @amount = 100
-    @credit_card = credit_card('5223450000000007', verification_value: "090", month: "12", year: "2025")
-    @declined_card = credit_card('4000300011112220')
+    @credit_card = credit_card('4176661000001015', verification_value: "281", month: "12", year: "2022")
+    @declined_card = credit_card('4176661000001111', verification_value: "681", month: "12", year: "2022")
     @options = {
       order_id: "1",
       currency: "EUR",
@@ -23,6 +23,13 @@ class RemoteCredoraxTest < Test::Unit::TestCase
 
   def test_successful_purchase
     response = @gateway.purchase(@amount, @credit_card, @options)
+    assert_success response
+    assert_equal "1", response.params["H9"]
+    assert_equal "Succeeded", response.message
+  end
+
+  def test_successful_purchase_with_extra_options
+    response = @gateway.purchase(@amount, @credit_card, @options.merge(transaction_type: '10'))
     assert_success response
     assert_equal "1", response.params["H9"]
     assert_equal "Succeeded", response.message
@@ -49,14 +56,15 @@ class RemoteCredoraxTest < Test::Unit::TestCase
     response = @gateway.authorize(@amount, @declined_card, @options)
     assert_failure response
     assert_equal "Transaction not allowed for cardholder", response.message
-    assert_equal "05", response.params["Z2"]
   end
 
   def test_failed_capture
-    response = @gateway.capture(@amount, "")
-    assert_failure response
-    assert_equal "2. At least one of input parameters is malformed.: Parameter [g4] cannot be empty.", response.message
-    assert_equal "-9", response.params["Z2"]
+    auth = @gateway.authorize(@amount, @credit_card, @options)
+    assert_success auth
+
+    capture = @gateway.capture(0, auth.authorization)
+    assert_failure capture
+    assert_equal "Invalid amount", capture.message
   end
 
   def test_successful_purchase_and_void
@@ -95,8 +103,7 @@ class RemoteCredoraxTest < Test::Unit::TestCase
   def test_failed_void
     response = @gateway.void("")
     assert_failure response
-    assert_equal "2. At least one of input parameters is malformed.: Parameter [g4] cannot be empty.", response.message
-    assert_equal "-9", response.params["Z2"]
+    assert_equal "Referred to transaction has not been found.", response.message
   end
 
   def test_successful_refund
@@ -122,10 +129,9 @@ class RemoteCredoraxTest < Test::Unit::TestCase
   end
 
   def test_failed_refund
-    response = @gateway.refund(nil, "")
+    response = @gateway.refund(nil, "123;123;123")
     assert_failure response
-    assert_equal "2. At least one of input parameters is malformed.: Parameter [g4] cannot be empty.", response.message
-    assert_equal "-9", response.params["Z2"]
+    assert_equal "Referred to transaction has not been found.", response.message
   end
 
   def test_successful_credit
@@ -135,9 +141,9 @@ class RemoteCredoraxTest < Test::Unit::TestCase
   end
 
   def test_failed_credit
-    response = @gateway.credit(@amount, @declined_card, @options)
+    response = @gateway.credit(0, @declined_card, @options)
     assert_failure response
-    assert_equal "Transaction not allowed for cardholder", response.message
+    assert_equal "Invalid amount", response.message
   end
 
   def test_successful_verify
@@ -150,7 +156,6 @@ class RemoteCredoraxTest < Test::Unit::TestCase
     response = @gateway.verify(@declined_card, @options)
     assert_failure response
     assert_equal "Transaction not allowed for cardholder", response.message
-    assert_equal "05", response.params["Z2"]
   end
 
   def test_transcript_scrubbing

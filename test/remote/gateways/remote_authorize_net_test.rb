@@ -16,6 +16,26 @@ class RemoteAuthorizeNetTest < Test::Unit::TestCase
       billing_address: address,
       description: 'Store Purchase'
     }
+
+    @level_2_options = {
+      tax: {
+          amount: "100",
+          name: "tax name",
+          description: "tax description"
+        },
+      duty: {
+          amount: "200",
+          name: "duty name",
+          description: "duty description"
+        },
+      shipping: {
+        amount: "300",
+        name: "shipping name",
+        description: "shipping description",
+      },
+      tax_exempt: "false",
+      po_number: "123"
+    }
   end
 
   def test_successful_purchase
@@ -36,6 +56,14 @@ class RemoteAuthorizeNetTest < Test::Unit::TestCase
 
   def test_successful_purchase_with_email_customer
     response = @gateway.purchase(@amount, @credit_card, duplicate_window: 0, email_customer: true, email: 'anet@example.com', billing_address: address)
+    assert_success response
+    assert response.test?
+    assert_equal 'This transaction has been approved', response.message
+    assert response.authorization
+  end
+
+  def test_successful_purchase_with_false_email_customer
+    response = @gateway.purchase(@amount, @credit_card, duplicate_window: 0, email_customer: false, email: 'anet@example.com', billing_address: address)
     assert_success response
     assert response.test?
     assert_equal 'This transaction has been approved', response.message
@@ -75,6 +103,18 @@ class RemoteAuthorizeNetTest < Test::Unit::TestCase
     assert response.test?
     assert_equal 'This transaction has been approved', response.message
     assert response.authorization
+  end
+
+  def test_successful_purchase_with_level_2_data
+    response = @gateway.purchase(@amount, @credit_card, @options.merge(@level_2_options))
+    assert_success response
+    assert_equal 'This transaction has been approved', response.message
+  end
+
+  def test_successful_purchase_with_customer
+    response = @gateway.purchase(@amount, @credit_card, @options.merge(customer: "abcd_123"))
+    assert_success response
+    assert_equal 'This transaction has been approved', response.message
   end
 
   def test_failed_purchase
@@ -311,6 +351,15 @@ class RemoteAuthorizeNetTest < Test::Unit::TestCase
     assert_equal "This transaction has been approved.", response.message
   end
 
+  def test_successful_purchase_with_stored_card_and_level_2_data
+    store_response = @gateway.store(@credit_card, @options)
+    assert_success store_response
+
+    response = @gateway.purchase(@amount, store_response.authorization, @options.merge(@level_2_options))
+    assert_success response
+    assert_equal 'This transaction has been approved.', response.message
+  end
+
   def test_successful_authorize_and_capture_using_stored_card
     store = @gateway.store(@credit_card, @options)
     assert_success store
@@ -320,6 +369,19 @@ class RemoteAuthorizeNetTest < Test::Unit::TestCase
     assert_equal "This transaction has been approved.", auth.message
 
     capture = @gateway.capture(@amount, auth.authorization, @options)
+    assert_success capture
+    assert_equal "This transaction has been approved.", capture.message
+  end
+
+  def test_successful_authorize_and_capture_using_stored_card_with_level_2_data
+    store = @gateway.store(@credit_card, @options)
+    assert_success store
+
+    auth = @gateway.authorize(@amount, store.authorization, @options.merge(@level_2_options))
+    assert_success auth
+    assert_equal "This transaction has been approved.", auth.message
+
+    capture = @gateway.capture(@amount, auth.authorization, @options.merge(@level_2_options))
     assert_success capture
     assert_equal "This transaction has been approved.", capture.message
   end
@@ -338,6 +400,19 @@ class RemoteAuthorizeNetTest < Test::Unit::TestCase
     assert_match %r{Address not verified}, response.avs_result["message"]
   end
 
+  def test_failed_authorize_using_wrong_token
+    response = @gateway.store(@declined_card)
+    assert_success response
+
+    responseA = @gateway.authorize(@amount, response.authorization, @options.merge(customer_payment_profile_id: 12345))
+    responseB = @gateway.authorize(@amount, response.authorization, @options.merge(customer_profile_id: 12345))
+    assert_failure responseA
+    assert_failure responseB
+
+    assert_equal 'Customer Profile ID or Customer Payment Profile ID not found', responseA.message
+    assert_equal 'Customer Profile ID or Customer Payment Profile ID not found', responseB.message
+  end
+
   def test_failed_capture_using_stored_card
     store = @gateway.store(@credit_card, @options)
     assert_success store
@@ -350,6 +425,26 @@ class RemoteAuthorizeNetTest < Test::Unit::TestCase
     assert_match %r{The amount requested for settlement cannot be greater}, capture.message
   end
 
+  def test_faux_successful_refund_with_billing_address
+    purchase = @gateway.purchase(@amount, @credit_card, @options)
+    assert_success purchase
+
+    refund = @gateway.refund(@amount, purchase.authorization, @options.merge(first_name: 'Jim', last_name: 'Smith'))
+    assert_failure refund
+    assert_match %r{does not meet the criteria for issuing a credit}, refund.message, "Only allowed to refund transactions that have settled.  This is the best we can do for now testing wise."
+  end
+
+  def test_faux_successful_refund_without_billing_address
+    purchase = @gateway.purchase(@amount, @credit_card, @options)
+    assert_success purchase
+
+    @options[:billing_address] = nil
+
+    refund = @gateway.refund(@amount, purchase.authorization, @options.merge(first_name: 'Jim', last_name: 'Smith'))
+    assert_failure refund
+    assert_match %r{does not meet the criteria for issuing a credit}, refund.message, "Only allowed to refund transactions that have settled.  This is the best we can do for now testing wise."
+  end
+
   def test_faux_successful_refund_using_stored_card
     store = @gateway.store(@credit_card, @options)
     assert_success store
@@ -358,6 +453,18 @@ class RemoteAuthorizeNetTest < Test::Unit::TestCase
     assert_success purchase
 
     refund = @gateway.refund(@amount, purchase.authorization, @options)
+    assert_failure refund
+    assert_match %r{does not meet the criteria for issuing a credit}, refund.message, "Only allowed to refund transactions that have settled.  This is the best we can do for now testing wise."
+  end
+
+  def test_faux_successful_refund_using_stored_card_and_level_2_data
+    store = @gateway.store(@credit_card, @options)
+    assert_success store
+
+    purchase = @gateway.purchase(@amount, store.authorization, @options.merge(@level_2_options))
+    assert_success purchase
+
+    refund = @gateway.refund(@amount, purchase.authorization, @options.merge(@level_2_options))
     assert_failure refund
     assert_match %r{does not meet the criteria for issuing a credit}, refund.message, "Only allowed to refund transactions that have settled.  This is the best we can do for now testing wise."
   end
@@ -483,6 +590,16 @@ class RemoteAuthorizeNetTest < Test::Unit::TestCase
     assert response.authorization
   end
 
+  def test_successful_echeck_refund
+    purchase = @gateway.purchase(@amount, @check, @options)
+    assert_success purchase
+
+    @options.update(transaction_id:  purchase.params['transaction_id'], test_request: true)
+    refund = @gateway.credit(@amount, @check, @options)
+    assert_failure refund
+    assert_match %r{The transaction cannot be found}, refund.message, "Only allowed to refund transactions that have settled.  This is the best we can do for now testing wise."
+  end
+
   def test_failed_credit
     response = @gateway.credit(@amount, @declined_card, @options)
     assert_failure response
@@ -518,6 +635,34 @@ class RemoteAuthorizeNetTest < Test::Unit::TestCase
 
     capture = @gateway.capture(@amount, auth.authorization)
     assert_success capture
+  end
+
+  def test_successful_refund_with_network_tokenization
+    credit_card = network_tokenization_credit_card('4000100011112224',
+      payment_cryptogram: "EHuWW9PiBkWvqE5juRwDzAUFBAk=",
+      verification_value: nil
+    )
+
+    purchase = @gateway.purchase(@amount, credit_card, @options)
+    assert_success purchase
+
+    @options[:billing_address] = nil
+
+    refund = @gateway.refund(@amount, purchase.authorization, @options.merge(first_name: 'Jim', last_name: 'Smith'))
+    assert_failure refund
+    assert_match %r{does not meet the criteria for issuing a credit}, refund.message, "Only allowed to refund transactions that have settled.  This is the best we can do for now testing wise."
+  end
+
+  def test_successful_credit_with_network_tokenization
+    credit_card = network_tokenization_credit_card('4000100011112224',
+      payment_cryptogram: "EHuWW9PiBkWvqE5juRwDzAUFBAk=",
+      verification_value: nil
+    )
+
+    response = @gateway.credit(@amount, credit_card, @options)
+    assert_success response
+    assert_equal 'This transaction has been approved', response.message
+    assert response.authorization
   end
 
   def test_network_tokenization_transcript_scrubbing

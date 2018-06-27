@@ -3,7 +3,8 @@ module ActiveMerchant #:nodoc:
     class CashnetGateway < Gateway
       include Empty
 
-      self.live_url      = "https://commerce.cashnet.com/"
+      self.live_url = "https://commerce.cashnet.com/"
+      self.test_url = "https://train.cashnet.com/"
 
       self.supported_countries = ["US"]
       self.supported_cardtypes = [:visa, :master, :american_express, :discover, :diners_club, :jcb]
@@ -54,11 +55,22 @@ module ActiveMerchant #:nodoc:
         commit('REFUND', money, post)
       end
 
+      def supports_scrubbing?
+        true
+      end
+
+      def scrub(transcript)
+        transcript
+          .gsub(%r{(password=)[^&]+}, '\1[FILTERED]')
+          .gsub(%r{(cardno=)[^&]+}, '\1[FILTERED]')
+          .gsub(%r{(cid=)[^&]+}, '\1[FILTERED]')
+      end
+
       private
 
       def commit(action, money, fields)
         fields[:amount] = amount(money)
-        url = live_url + CGI.escape(@options[:merchant_gateway_name])
+        url = (test? ? test_url : live_url) + CGI.escape(@options[:merchant_gateway_name])
         raw_response = ssl_post(url, post_data(action, fields))
         parsed_response = parse(raw_response)
 
@@ -130,7 +142,7 @@ module ActiveMerchant #:nodoc:
       def handle_response(response)
         if (200...300).include?(response.code.to_i)
           return response.body
-        elsif 302 == response.code.to_i
+        elsif response.code.to_i == 302
           return ssl_get(URI.parse(response['location']))
         end
         raise ResponseError.new(response)
