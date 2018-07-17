@@ -72,7 +72,6 @@ class RemoteZiftTest < Test::Unit::TestCase
     sleep(5)
     assert capture = @gateway.capture(@amount+100, auth.authorization)
     assert_failure capture
-    puts ">>>>>>>>>>>> CAPTURE=#{capture.inspect}"
     assert_match /Capture Amount value must be less than or equal to Authorization Amount/, capture.message
   end
 
