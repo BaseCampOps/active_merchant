@@ -1267,3 +1267,8 @@ worldpay_us:
   acctid: MPNAB
   subid: SPREE
   merchantpin: "1234567890"
+
+zift:
+  userName: api-evtc-ms1804000
+  password: tUndM195v0fjEJqbN4DydFkV93v4E5L4
+  accountId: 1804001
